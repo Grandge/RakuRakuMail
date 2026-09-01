@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# 秘匿情報（Gitに入れない）
+Documents/秘匿/
+.env
+.env.local
+.env.*.local
+
+# Google Cloud Console からダウンロードした認証情報。
+# 本アプリはクライアントシークレットを使わないが、置き場所を間違えても
+# コミットされないように保険をかける。
+client_secret*.json

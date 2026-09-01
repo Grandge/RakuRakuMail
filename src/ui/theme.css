@@ -1,0 +1,76 @@
+/*
+ * 色トークンと文字サイズ（要件定義書 5.4 / 5.5, D-60）
+ *
+ * 朱は2トーンに分ける。
+ *   --accent        文字を載せない差し色（新着の印など）
+ *   --accent-strong 白文字を載せる面（送信ボタンなど）
+ * 朱 #D2553F の上に白文字を置くと 4.1:1 で、5.4 の 4.5:1 基準を満たさないため。
+ */
+:root {
+  --bg: #f7f4ef;
+  --surface: #ffffff;
+  --primary: #28417a;
+  --on-primary: #ffffff;
+  --accent: #d2553f;
+  --accent-strong: #c0442f;
+  --text: #22252a;
+  --text-sub: #5a6070;
+  --border: #ded8cc;
+
+  /* 5.4: 本文の既定は 18px。「大」22px /「特大」26px（切替UIはM8） */
+  --font-size-base: 18px;
+  --font-size-sub: 0.8125rem;
+
+  /* 5.4: タップ領域の最小 48x48px */
+  --tap-min: 48px;
+
+  --radius: 12px;
+  --gap: 12px;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: var(--font-size-base);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", sans-serif;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+#root {
+  height: 100dvh;
+}
+
+/* 5.4: ボタンはアイコンのみにせず、必ず文字ラベルを併記する */
+button {
+  min-height: var(--tap-min);
+  padding: 0 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--primary);
+}
