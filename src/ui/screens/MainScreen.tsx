@@ -207,7 +207,7 @@ export function MainScreen({ profile, myDisplayName }: Props) {
           ログアウトでは端末の保存データを消さない。消去は S-07 設定画面の
           「この端末のデータを消す」から確認画面を挟んで行う（要件定義書 6.2 / 5.4 / D-55）。
         */}
-        <button type="button" className="button-on-primary" onClick={() => void signOut()}>
+        <button type="button" className="button-on-primary" onClick={signOut}>
           ログアウト
         </button>
       </header>

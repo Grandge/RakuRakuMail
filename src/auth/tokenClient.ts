@@ -176,7 +176,14 @@ export function requestToken(
   });
 }
 
-/** アクセストークンを無効化する（ログアウト時）。 */
+/**
+ * アクセストークンを無効化し、このアプリへの許可を取り消す。
+ *
+ * **ログアウトでは呼ばない**（`session.ts` の `signOut()` を参照）。呼ぶ場所は
+ * S-07 設定画面の「この端末のデータを消す」だけで、`db.clearAll()` と一緒に
+ * 使う（要件定義書 6.2 / D-55）。M1 時点では S-07 が未実装のため、この関数は
+ * まだどこからも呼ばれていない。
+ */
 export function revokeToken(accessToken: string): Promise<void> {
   return new Promise((resolve) => {
     if (!window.google?.accounts?.oauth2?.revoke) {

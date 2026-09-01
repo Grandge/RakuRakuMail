@@ -3,6 +3,10 @@
  *
  * 審査前のテストモードでは「このアプリは Google で確認されていません」という
  * 警告が出る。その通過手順をこの画面に書いておく（NFR-01）。
+ *
+ * 手順は 2026-09-01 に実際の警告画面を見て合わせたもの。目立つ青いボタンが
+ * 「安全なページに戻る」（＝進めない側）で、進む側は左下の小さいリンク
+ * 「続行」になっている。Google が画面を変えたら、ここも直すこと。
  */
 
 import { useState } from 'react';
@@ -68,13 +72,16 @@ export function LoginScreen({ initialNotice = null }: Props) {
           </p>
           <ol style={styles.helpList}>
             <li>
-              画面の左下にある <strong>「詳細」</strong> を押します
+              画面の左下にある <strong>「続行」</strong> を押します
             </li>
             <li>
-              下に出てくる <strong>「{APP_NAME}（安全ではないページ）に移動」</strong> を押します
+              許可の確認画面が出たら、すべてにチェックを入れて <strong>「続行」</strong> を押します
             </li>
-            <li>許可の確認画面が出たら、すべてにチェックを入れて「続行」を押します</li>
           </ol>
+          <p style={styles.helpText}>
+            右下にある目立つ青いボタン <strong>「安全なページに戻る」</strong> を押すと、
+            先へ進めません。押すのは左下の小さな文字の <strong>「続行」</strong> です。
+          </p>
           <p style={styles.helpText}>
             チェックを外すと、メールの送受信ができません。
           </p>

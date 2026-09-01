@@ -6,7 +6,7 @@
  */
 
 import { log } from '../lib/log';
-import { AuthError, requestToken, revokeToken, type TokenResult } from './tokenClient';
+import { AuthError, requestToken, type TokenResult } from './tokenClient';
 
 /** 失効の何ミリ秒前から取り直すか。 */
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -91,18 +91,26 @@ export async function forceRefresh(): Promise<string> {
   return token.accessToken;
 }
 
-/** ログアウト。トークンを無効化してメモリから消す。 */
-export async function signOut(): Promise<void> {
-  const token = current;
+/**
+ * ログアウト。メモリ上のトークンを捨てるだけにする。
+ *
+ * ここで `revokeToken()` を呼ばないのは意図的（要件定義書 6.2 / D-54, D-55）。
+ * 呼ぶと許可が中途半端に取り消され、次のログインで Google が増分同意
+ * （「すでに一部のアクセス権限を付与されています」）の画面を出す。すると
+ * 1回目はスコープが揃わず `scope_denied` になり、2回目でようやく通る。
+ * 高齢者やITが苦手な人が使う前提（NFR-01）では重すぎる。
+ *
+ * トークンはメモリ上にしかない（D-54）ので、捨てた時点でこのアプリからは
+ * 使えず、ログアウトとして成立する。残ったトークン自体も1時間で失効する。
+ *
+ * 許可そのものの取り消しは `revokeToken()` を使い、S-07 設定画面の
+ * 「この端末のデータを消す」から `clearAll()` と一緒に行う（要件定義書 6.2）。
+ *
+ * なお、端末に保存したデータはログアウトでは消さない（6.2 / 5.4 / D-55）。
+ */
+export function signOut(): void {
   setCurrent(null);
-  if (token) {
-    try {
-      await revokeToken(token.accessToken);
-    } catch (e) {
-      // 無効化に失敗しても手元からは消えている。1時間で自然に失効する。
-      log.warn('トークンの無効化に失敗', e);
-    }
-  }
+  log.debug('ログアウト（メモリ上のトークンを破棄）');
 }
 
 export { AuthError, type TokenResult };
