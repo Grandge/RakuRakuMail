@@ -10,10 +10,13 @@ import { AuthError, signOut } from '../../auth/session';
 import { GmailError } from '../../gmail/http';
 import { importConversations, type ImportProgress } from '../../domain/importer';
 import {
+  accountFromProfile,
   applySendResult,
+  contactFromPanel,
   conversationForSend,
   mergePanels,
   panelForNewContact,
+  panelsFromContacts,
   panelsFromConversations,
   peerLabel,
   settleMessage,
@@ -21,6 +24,7 @@ import {
   type PanelMessage,
 } from '../../domain/panel';
 import { sendText } from '../../domain/sender';
+import { clearAll, loadSettings, saveAccount, saveContacts } from '../../store/db';
 import type { MyProfile } from '../../gmail/profile';
 import { APP_NAME } from '../../config';
 import { log } from '../../lib/log';
@@ -75,10 +79,30 @@ export function MainScreen({ profile, myDisplayName }: Props) {
     }
   }, [profile.email, myDisplayName]);
 
-  // 起動時に1回だけ取り込む（D-44）。定期ポーリングはしない。
+  // 端末に保存してある相手を先に出してから取り込む（D-49 / Step 8）。
+  // 保存が読めなくても空で始めるだけで、取り込みは通常どおり動く。
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+    void (async () => {
+      const saved = await loadSettings();
+      if (!cancelled && saved.contacts.length > 0) {
+        setPanels((current) =>
+          mergePanels(current, panelsFromContacts(saved.contacts, myDisplayName)),
+        );
+      }
+      void saveAccount(accountFromProfile({ email: profile.email, displayName: myDisplayName }));
+      if (!cancelled) await refresh();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh, profile.email, myDisplayName]);
+
+  // 相手が増減したら保存し直す（件数が少ないのでまとめて書く）。
+  useEffect(() => {
+    if (panels.length === 0) return;
+    void saveContacts(panels.map(contactFromPanel));
+  }, [panels]);
 
   const selected = panels.find((p) => p.key === selectedKey) ?? null;
 
@@ -155,6 +179,12 @@ export function MainScreen({ profile, myDisplayName }: Props) {
     }
   }
 
+  // ログアウトでは端末に残した設定も消す（要件定義書 2.5）。
+  async function handleSignOut() {
+    await clearAll();
+    await signOut();
+  }
+
   function updatePanel(key: string, update: (panel: Panel) => Panel) {
     setPanels((current) => current.map((p) => (p.key === key ? update(p) : p)));
   }
@@ -179,7 +209,11 @@ export function MainScreen({ profile, myDisplayName }: Props) {
             {myDisplayName}（{profile.email}）
           </div>
         </div>
-        <button type="button" className="button-on-primary" onClick={() => void signOut()}>
+        <button
+          type="button"
+          className="button-on-primary"
+          onClick={() => void handleSignOut()}
+        >
           ログアウト
         </button>
       </header>

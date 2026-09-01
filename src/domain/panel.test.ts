@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  accountFromProfile,
   applySendResult,
+  contactFromPanel,
   conversationForSend,
   mergePanels,
   panelForNewContact,
+  panelsFromContacts,
   panelsFromConversations,
   peerLabel,
   settleMessage,
@@ -271,5 +274,70 @@ describe('peerLabel', () => {
 
   it('表示名が無ければアドレスを使う', () => {
     expect(peerLabel({ email: PEER, displayName: '  ' })).toBe(PEER);
+  });
+});
+
+describe('panelsFromContacts / accountFromProfile（Step 8 の永続化）', () => {
+  const contacts = [
+    {
+      id: 'hanako@example.com',
+      accountId: 'local-account',
+      email: 'Hanako@Example.com',
+      displayName: '花子',
+      isRakurakuUser: true,
+    },
+  ];
+
+  it('保存してあった相手をパネルに戻す', () => {
+    const [panel] = panelsFromContacts(contacts, '太郎');
+
+    expect(panel?.key).toBe('hanako@example.com');
+    expect(panel?.peer.displayName).toBe('花子');
+    expect(panel?.peerIsRakurakuUser).toBe(true);
+    expect(panel?.messages).toEqual([]);
+    expect(panel?.threads).toEqual([]);
+  });
+
+  it('やり取りのある会話より下に並ぶ', () => {
+    const restored = panelsFromContacts(contacts, '太郎');
+    const active = panelForNewContact({
+      peer: { email: 'jiro@example.com', displayName: '次郎' },
+      myDisplayName: '太郎',
+    });
+
+    const merged = mergePanels(restored, [active]);
+    expect(merged.map((p) => p.key)).toEqual(['jiro@example.com', 'hanako@example.com']);
+  });
+
+  it('取り込めた相手は取り込み結果で上書きされ、二重に並ばない', () => {
+    const restored = panelsFromContacts(contacts, '太郎');
+    const imported = panelForNewContact({
+      peer: { email: 'hanako@example.com', displayName: '花子' },
+      myDisplayName: '太郎',
+    });
+
+    const merged = mergePanels(restored, [imported]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.lastActivityAt).toBe(imported.lastActivityAt);
+  });
+
+  it('相手をそのまま Contact に戻せる（往復できる）', () => {
+    const [panel] = panelsFromContacts(contacts, '太郎');
+    expect(contactFromPanel(panel!)).toEqual({
+      ...contacts[0],
+      email: 'Hanako@Example.com',
+    });
+  });
+
+  it('自分のアカウントは M1 の既定値で組み立てる', () => {
+    expect(accountFromProfile({ email: 'me@example.com', displayName: '太郎' })).toEqual({
+      id: 'local-account',
+      email: 'me@example.com',
+      displayName: '太郎',
+      labelIds: null,
+      filterIds: [],
+      lastHistoryId: null,
+      importRange: '1m',
+    });
   });
 });

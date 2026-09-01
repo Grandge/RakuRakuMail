@@ -1,0 +1,65 @@
+# GitHub Pages への配信（M1実装計画 Step 9 / D-63）。
+#
+# 配信先: https://grandge.github.io/RakuRakuMail/
+# vite.config.ts の base: '/RakuRakuMail/' と対になっている。
+#
+# 動かす前に、リポジトリ側で2つ設定してください。
+#   1. Settings → Pages → Source を「GitHub Actions」にする
+#   2. Settings → Secrets and variables → Actions → New repository secret で
+#      VITE_GOOGLE_CLIENT_ID に OAuth クライアント ID を入れる
+#      （クライアント ID はビルド後の JS に必ず現れるので秘密ではないが、
+#        公開リポジトリのソースには置かない方針。.env.example を参照）
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # 手動でも流せるようにしておく（クライアントIDを入れ直したときなど）。
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 走行中のものは取り消さず、最後の1本だけ後に回す。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 配信物が壊れていないことを先に確かめる。
+      - run: npm test
+
+      - run: npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

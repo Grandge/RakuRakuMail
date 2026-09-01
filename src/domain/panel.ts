@@ -12,7 +12,7 @@
 import { buildDirectSubject } from '../mail/subject';
 import { uuid } from '../lib/uuid';
 import type { ConversationView } from './importer';
-import type { Contact, Conversation, Message } from './types';
+import type { Account, Contact, Conversation, Message } from './types';
 
 /** 送信中・送信失敗の吹き出しを表すための追加情報（6.3）。 */
 export type PendingState = 'sending' | 'failed';
@@ -233,6 +233,44 @@ export function lastMessageSummary(panel: Panel): string {
   const text = last.text.replace(/\s+/g, ' ').trim();
   if (text === '') return '（本文なし）';
   return text.length > 30 ? `${text.slice(0, 30)}…` : text;
+}
+
+/**
+ * 保存してあった相手から、取り込む前のパネルを作る（Step 8）。
+ *
+ * `lastActivityAt` を最古にしておくのは、やり取りのある会話より下に
+ * 並べるため。取り込みが済めば `mergePanels` が本当の日時で上書きする。
+ */
+export function panelsFromContacts(
+  contacts: readonly Contact[],
+  myDisplayName: string,
+): Panel[] {
+  return contacts.map((contact) => ({
+    key: keyOf(contact.email),
+    peer: { email: contact.email, displayName: contact.displayName },
+    threads: [],
+    draftSubject: buildDirectSubject(myDisplayName),
+    convId: uuid(),
+    messages: [],
+    peerIsRakurakuUser: contact.isRakurakuUser,
+    lastActivityAt: new Date(0).toISOString(),
+  }));
+}
+
+/** 自分を Account として保存する形にする（Step 8 で使う）。 */
+export function accountFromProfile(profile: {
+  email: string;
+  displayName: string;
+}): Account {
+  return {
+    id: LOCAL_ACCOUNT_ID,
+    email: profile.email,
+    displayName: profile.displayName,
+    labelIds: null,
+    filterIds: [],
+    lastHistoryId: null,
+    importRange: '1m',
+  };
 }
 
 /** 相手を Contact として保存する形にする（Step 8 で使う）。 */
