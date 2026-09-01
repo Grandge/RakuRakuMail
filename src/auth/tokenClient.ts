@@ -59,30 +59,24 @@ export class AuthError extends Error {
 /** `prompt` に渡せる値（GIS の仕様）。 */
 export type PromptMode = '' | 'none' | 'consent' | 'select_account';
 
-type Pending = {
-  resolve: (result: TokenResult) => void;
-  reject: (error: AuthError) => void;
+export type RequestOptions = {
+  /** アカウントを指定する（M3 の切り替えで使う）。 */
+  readonly hint?: string;
+  /**
+   * **利用者の操作を伴わない裏の取得か。**
+   *
+   * 裏の取得どうしは1本にまとめてよい。しかし利用者がボタンを押して始めた
+   * 取得を、進行中の裏の取得に相乗りさせてはいけない。裏の取得はポップアップを
+   * 塞がれて失敗することがあり（要件定義書 2.3 手順1）、相乗りするとその失敗を
+   * ボタンの1回目が引き継いで「1回目だけ失敗して2回目は通る」ことになる。
+   */
+  readonly background?: boolean;
 };
 
-let client: google.accounts.oauth2.TokenClient | null = null;
-let pending: Pending | null = null;
+/** いま進行中の取得。裏の取得を相乗りさせる先。 */
 let inFlight: Promise<TokenResult> | null = null;
 
-function settleOk(result: TokenResult): void {
-  const p = pending;
-  pending = null;
-  p?.resolve(result);
-}
-
-function settleNg(error: AuthError): void {
-  const p = pending;
-  pending = null;
-  p?.reject(error);
-}
-
-async function getClient(): Promise<google.accounts.oauth2.TokenClient> {
-  if (client) return client;
-
+async function ensureReady(): Promise<void> {
   try {
     await whenGisReady();
   } catch (e) {
@@ -95,55 +89,82 @@ async function getClient(): Promise<google.accounts.oauth2.TokenClient> {
       'クライアントIDが未設定です（.env.local の VITE_GOOGLE_CLIENT_ID）',
     );
   }
+}
 
-  client = window.google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: SCOPES.join(' '),
-    callback: (response) => {
-      if (response.error) {
-        log.warn('トークン取得に失敗', response.error, response.error_description);
-        settleNg(
-          new AuthError(
-            response.error === 'access_denied' ? 'cancelled' : 'unknown',
-            response.error_description || response.error,
-          ),
+/**
+ * 取得を1回だけ行う。
+ *
+ * **`initTokenClient` を要求ごとに作る。** GIS のコールバックはクライアントに
+ * 1組しか登録できないため、クライアントを使い回すと、片付いたはずの古い要求の
+ * コールバックが次の要求を解決・棄却してしまう。要求ごとに作れば、
+ * コールバックはその要求の `resolve` / `reject` だけを閉じ込める。
+ * `settled` の番人は、同じ要求に対してコールバックが二度来ても効くようにするため。
+ */
+async function requestOnce(prompt: PromptMode, hint?: string): Promise<TokenResult> {
+  await ensureReady();
+
+  return await new Promise<TokenResult>((resolve, reject) => {
+    let settled = false;
+
+    const ok = (result: TokenResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const ng = (error: AuthError): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: SCOPES.join(' '),
+      callback: (response) => {
+        if (response.error) {
+          log.warn('トークン取得に失敗', response.error, response.error_description);
+          ng(
+            new AuthError(
+              response.error === 'access_denied' ? 'cancelled' : 'unknown',
+              response.error_description || response.error,
+            ),
+          );
+          return;
+        }
+
+        const granted = (response.scope ?? '').split(' ').filter(Boolean);
+        // 任意スコープを外されてもログインは通す。必須のものだけを見る。
+        const missing = REQUIRED_SCOPES.filter((s) => !granted.includes(s));
+        if (missing.length > 0) {
+          ng(new AuthError('scope_denied', `許可されなかったスコープ: ${missing.join(', ')}`));
+          return;
+        }
+
+        ok({
+          accessToken: response.access_token,
+          // expires_in は秒。安全側に倒して現在時刻を起点にする。
+          expiresAt: Date.now() + Number(response.expires_in) * 1000,
+          grantedScopes: granted,
+        });
+      },
+      error_callback: (error) => {
+        // popup_failed_to_open … 利用者操作を伴わない呼び出しが塞がれた
+        // popup_closed        … 利用者が同意画面を閉じた
+        const type = String(error.type ?? '');
+        log.warn('トークン取得のエラー', type, error.message);
+        ng(
+          type === 'popup_failed_to_open'
+            ? new AuthError('popup_blocked', 'ポップアップが開けませんでした', error)
+            : type === 'popup_closed'
+              ? new AuthError('cancelled', 'ログイン画面が閉じられました', error)
+              : new AuthError('unknown', error.message ?? type, error),
         );
-        return;
-      }
+      },
+    });
 
-      const granted = (response.scope ?? '').split(' ').filter(Boolean);
-      // 任意スコープを外されてもログインは通す。必須のものだけを見る。
-      const missing = REQUIRED_SCOPES.filter((s) => !granted.includes(s));
-      if (missing.length > 0) {
-        settleNg(
-          new AuthError('scope_denied', `許可されなかったスコープ: ${missing.join(', ')}`),
-        );
-        return;
-      }
-
-      settleOk({
-        accessToken: response.access_token,
-        // expires_in は秒。安全側に倒して現在時刻を起点にする。
-        expiresAt: Date.now() + Number(response.expires_in) * 1000,
-        grantedScopes: granted,
-      });
-    },
-    error_callback: (error) => {
-      // popup_failed_to_open … 利用者操作を伴わない呼び出しが塞がれた
-      // popup_closed        … 利用者が同意画面を閉じた
-      const type = String(error.type ?? '');
-      log.warn('トークン取得のエラー', type, error.message);
-      settleNg(
-        type === 'popup_failed_to_open'
-          ? new AuthError('popup_blocked', 'ポップアップが開けませんでした', error)
-          : type === 'popup_closed'
-            ? new AuthError('cancelled', 'ログイン画面が閉じられました', error)
-            : new AuthError('unknown', error.message ?? type, error),
-      );
-    },
+    client.requestAccessToken(hint === undefined ? { prompt } : { prompt, hint });
   });
-
-  return client;
 }
 
 /**
@@ -153,27 +174,29 @@ async function getClient(): Promise<google.accounts.oauth2.TokenClient> {
  * ただし GIS はトークンモデルでも内部でポップアップを開くため、
  * 利用者の操作を伴わない起動直後の呼び出しは塞がれうる（AuthError('popup_blocked')）。
  * 呼び出し側はその場合にボタンを出し、クリックから呼び直すこと（要件定義書 2.3 手順3）。
+ *
+ * `options.background` の扱いは {@link RequestOptions} を参照。既定は
+ * 「利用者の操作から始まった取得」で、進行中のものには相乗りせず必ず自分で取りにいく。
+ * ここで `await` を挟まずに `requestAccessToken` へ届くようにしてあるのは、
+ * クリックの操作履歴（transient user activation）を失わないため。
  */
 export function requestToken(
   prompt: PromptMode = '',
-  hint?: string,
+  options: RequestOptions = {},
 ): Promise<TokenResult> {
-  // GIS は同時に複数の要求を捌けない。先行分に相乗りさせる。
-  if (inFlight) return inFlight;
+  // 裏の取得どうしは1本にまとめる。GIS は同時に複数の要求を捌けない。
+  if (options.background === true && inFlight !== null) return inFlight;
 
-  inFlight = (async () => {
-    const c = await getClient();
-    return await new Promise<TokenResult>((resolve, reject) => {
-      pending = { resolve, reject };
-      c.requestAccessToken(
-        hint === undefined ? { prompt } : { prompt, hint },
-      );
-    });
-  })();
+  const promise = requestOnce(prompt, options.hint);
+  inFlight = promise;
 
-  return inFlight.finally(() => {
-    inFlight = null;
-  });
+  // 後から始まった取得に追い越されている場合は、その参照を消さない。
+  const forget = (): void => {
+    if (inFlight === promise) inFlight = null;
+  };
+  promise.then(forget, forget);
+
+  return promise;
 }
 
 /**

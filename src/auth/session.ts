@@ -51,7 +51,10 @@ export function isSignedIn(): boolean {
  */
 export async function trySilentSignIn(): Promise<TokenResult | null> {
   try {
-    const token = await requestToken('');
+    // background: true … ボタンから始まった取得をこの試みに相乗りさせない。
+    // 相乗りさせると、ここでポップアップを塞がれた失敗をボタンの1回目が
+    // 引き継いでしまう（tokenClient.ts の RequestOptions を参照）。
+    const token = await requestToken('', { background: true });
     setCurrent(token);
     return token;
   } catch (e) {
