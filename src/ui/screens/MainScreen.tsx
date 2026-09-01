@@ -24,7 +24,7 @@ import {
   type PanelMessage,
 } from '../../domain/panel';
 import { sendText } from '../../domain/sender';
-import { clearAll, loadSettings, saveAccount, saveContacts } from '../../store/db';
+import { loadSettings, saveAccount, saveContacts } from '../../store/db';
 import type { MyProfile } from '../../gmail/profile';
 import { APP_NAME } from '../../config';
 import { log } from '../../lib/log';
@@ -179,12 +179,6 @@ export function MainScreen({ profile, myDisplayName }: Props) {
     }
   }
 
-  // ログアウトでは端末に残した設定も消す（要件定義書 2.5）。
-  async function handleSignOut() {
-    await clearAll();
-    await signOut();
-  }
-
   function updatePanel(key: string, update: (panel: Panel) => Panel) {
     setPanels((current) => current.map((p) => (p.key === key ? update(p) : p)));
   }
@@ -209,11 +203,11 @@ export function MainScreen({ profile, myDisplayName }: Props) {
             {myDisplayName}（{profile.email}）
           </div>
         </div>
-        <button
-          type="button"
-          className="button-on-primary"
-          onClick={() => void handleSignOut()}
-        >
+        {/*
+          ログアウトでは端末の保存データを消さない。消去は S-07 設定画面の
+          「この端末のデータを消す」から確認画面を挟んで行う（要件定義書 6.2 / 5.4 / D-55）。
+        */}
+        <button type="button" className="button-on-primary" onClick={() => void signOut()}>
           ログアウト
         </button>
       </header>

@@ -132,7 +132,15 @@ export async function saveContacts(contacts: readonly Contact[]): Promise<void> 
   }
 }
 
-/** ログアウト時に端末から消す（要件定義書 2.5）。鍵ごと捨てる。 */
+/**
+ * 端末に残した設定を消す（要件定義書 6.2 / D-55 / PER-05）。鍵ごと捨てる。
+ *
+ * **呼ぶのは S-07 設定画面の「この端末のデータを消す」だけ。**
+ * ログアウトでは消さない。M3 の複数アカウント切り替え（D-36）で
+ * 切り替えのたびに相手の一覧が消えてしまうため。
+ * 破壊的な操作なので、呼ぶ側で確認画面を挟むこと（5.4）。
+ * M1 では設定画面が無いので、まだどこからも呼んでいない。
+ */
 export async function clearAll(): Promise<void> {
   try {
     const db = await connect();
